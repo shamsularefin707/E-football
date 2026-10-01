@@ -36,6 +36,7 @@ import {
   type KickKind,
   type MatchConfig,
   type MatchEvent,
+  type PlayerInfo,
   type Phase,
   type Restart,
   type RestartKind,
@@ -1466,6 +1467,47 @@ export class Match {
     gk.diveDir = v2(0, Math.sign(guessY - gk.pos.y));
     const sp = Math.min(6.5, Math.abs(guessY - gk.pos.y) / 0.4);
     gk.vel = v2(0, gk.diveDir.y * sp);
+  }
+
+  // ---------------------------------------------------- team management
+
+  readonly subsUsed: [number, number] = [0, 0];
+  static readonly MAX_SUBS = 5;
+
+  /** Bring `incoming` (from the bench) on for the player in `slot`. Returns false if not allowed. */
+  substitute(team: TeamId, slot: number, incoming: PlayerInfo): boolean {
+    const p = this.players[team * 11 + slot];
+    const setup = team === 0 ? this.cfg.home : this.cfg.away;
+    if (p.sentOff || this.subsUsed[team] >= Match.MAX_SUBS) return false;
+    const bi = setup.bench.indexOf(incoming);
+    if (bi < 0) return false;
+    if ((slot === 0) !== (incoming.position === 'GK') && slot === 0) return false; // keepers only in goal
+    setup.bench.splice(bi, 1);
+    setup.bench.push(p.info);
+    setup.lineup[slot] = incoming;
+    p.info = incoming;
+    p.stamina = 1;
+    p.yellow = 0;
+    this.subsUsed[team]++;
+    return true;
+  }
+
+  /** Swap two players' places in the XI (e.g. move a winger to striker). */
+  swapSlots(team: TeamId, a: number, b: number): void {
+    if (a === b || a === 0 || b === 0) return;
+    const pa = this.players[team * 11 + a];
+    const pb = this.players[team * 11 + b];
+    if (pa.sentOff || pb.sentOff) return;
+    const setup = team === 0 ? this.cfg.home : this.cfg.away;
+    [pa.info, pb.info] = [pb.info, pa.info];
+    [pa.stamina, pb.stamina] = [pb.stamina, pa.stamina];
+    [pa.yellow, pb.yellow] = [pb.yellow, pa.yellow];
+    [setup.lineup[a], setup.lineup[b]] = [setup.lineup[b], setup.lineup[a]];
+  }
+
+  setFormation(team: TeamId, name: string): void {
+    this.formations[team] = getFormation(name);
+    (team === 0 ? this.cfg.home : this.cfg.away).formation = name;
   }
 
   // ------------------------------------------------------------ AI access
